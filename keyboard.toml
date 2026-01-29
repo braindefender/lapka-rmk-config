@@ -145,6 +145,11 @@ RBracket  = "Slash"
 RBrace    = "WM(Slash, LShift)"
 Ampersand = "Comma"
 Tilde     = "Semicolon"
+# One-shot Modifiers mapping
+OSM_G     = "OSM(LGui)"
+OSM_A     = "OSM(LAlt)"
+OSM_C     = "OSM(LCtrl)"
+OSM_S     = "OSM(LShift)"
 # Window Management mapping
 PrevSpace = "WM(Left,  LCtrl | LGui)"
 NextSpace = "WM(Right, LCtrl | LGui)"
@@ -189,7 +194,7 @@ G          J          I          M          T          NumLock    No         No 
 name = "nav_layer"
 keys = """
 __         __         __         __         Escape     Escape     Home       End        Backspace  Delete
-LGui       LAlt       LCtrl      LShift     Enter      Enter      Left       Down       Up         Right
+@OSM_G     @OSM_A     @OSM_C     @OSM_S     Enter      Enter      Left       Down       Up         Right
 @PrevSpace @NextSpace TG(1)      pscr       Tab        Tab        PageUp     PageDown   Quote      NumLock
                       ___        ___        ___        ___        ___        ___
 """
@@ -198,7 +203,7 @@ LGui       LAlt       LCtrl      LShift     Enter      Enter      Left       Dow
 name = "sym_layer"
 keys = """
 Kc1        Kc2        Kc3        Kc4        Kc5        Kc6        Kc7        Kc8        Kc9        Kc0
-@Tilde     @Grave     LCtrl      LShift     @Minus     @Plus      Left       Down       Up         Right
+@Tilde     @Grave     LCtrl      LShift     @Minus     @Plus      @OSM_G     @OSM_A     @OSM_C     @OSM_S
 @Backslash No         @Semicolon @Comma     @Under     @Equal     @Dot       @Colon     @Pipe      @Slash
                       ___        ___        ___        ___        ___        ___
 """
@@ -207,7 +212,7 @@ Kc1        Kc2        Kc3        Kc4        Kc5        Kc6        Kc7        Kc8
 name = "num_layer"
 keys = """
 Kp1        Kp2        Kp3        Kp4        Kp5        Kp6        Kp7        Kp8        Kp9        Kp0
-LGui       LAlt       LCtrl      LShift     F11        F12        Left       Down       Up         Right
+@OSM_G     @OSM_A     @OSM_C     @OSM_S     F11        F12        @OSM_G     @OSM_A     @OSM_C     @OSM_S
 F1         F2         F3         F4         F5         F6         F7         F8         F9         F10
                       ___        ___        ___        ___        ___        ___
 """
