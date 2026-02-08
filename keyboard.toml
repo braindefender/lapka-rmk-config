@@ -74,8 +74,11 @@ upper = 3
 lower = 4
 adjust = 5
 
-[behavior.one_shot]
+[behavior.one_shot_modifiers]
 timeout = "300s"
+activate_on_keypress = true
+send_on_second_press = true
+release_modifier_keys = [ "MO(3)", "MO(4)" ]
 
 [layout]
 rows = 4
@@ -169,7 +172,7 @@ __         __         __         __         Escape     Escape     Home       End
 name = "sym_layer"
 keys = """
 Kc1        Kc2        Kc3        Kc4        Kc5        Kc6        Kc7        Kc8        Kc9        Kc0
-@Tilde     @Grave     LCtrl      LShift     @Minus     @Plus      @OSM_S     @OSM_C     @OSM_A     @OSM_G
+@Tilde     @Grave     @SQuot     @DQuot     @Minus     @Plus      @OSM_S     @OSM_C     @OSM_A     @OSM_G
 @Backslash No         @Semicolon @Comma     @Under     @Equal     @Dot       @Colon     @Pipe      @Slash
                       ___        ___        ___        ___        ___        ___
 """

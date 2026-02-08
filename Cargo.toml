@@ -10,9 +10,11 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-rmk = { version = "0.8", features = [
-    "nrf52840_ble",
+rmk = { path="../brain-rmk.git/rmk", default-features = false, features = [
+    "usb_log",
     "storage",
+    "vial",
+    "nrf52840_ble",
     "split",
     "async_matrix",
     "adafruit_bl",
