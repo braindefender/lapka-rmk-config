@@ -9,7 +9,7 @@ command = "cargo"
 args = ["build", "--release"]
 dependencies = ["install-llvm-tools", "flip-link"]
 
-[tasks.objcopy-central]
+[tasks.objcopy-dongle]
 install_crate = { crate_name = "cargo-binutils", binary = "cargo", test_arg = [
     "objcopy",
     "--help",
@@ -19,15 +19,15 @@ args = [
     "objcopy",
     "--release",
     "--bin",
-    "central",
+    "dongle",
     "--",
     "-O",
     "ihex",
-    "lapka-36-central.hex",
+    "lapka-36-dongle.hex",
 ]
 dependencies = ["build"]
 
-[tasks.objcopy-peripheral]
+[tasks.objcopy-left]
 install_crate = { crate_name = "cargo-binutils", binary = "cargo", test_arg = [
     "objcopy",
     "--help",
@@ -37,46 +37,78 @@ args = [
     "objcopy",
     "--release",
     "--bin",
-    "peripheral",
+    "left",
     "--",
     "-O",
     "ihex",
-    "lapka-36-peripheral.hex",
+    "lapka-36-left.hex",
 ]
 dependencies = ["build"]
 
-[tasks.bin-central]
+[tasks.objcopy-right]
+install_crate = { crate_name = "cargo-binutils", binary = "cargo", test_arg = [
+    "objcopy",
+    "--help",
+] }
 command = "cargo"
 args = [
     "objcopy",
     "--release",
     "--bin",
-    "central",
+    "right",
     "--",
     "-O",
-    "binary",
-    "lapka-36-central.bin",
+    "ihex",
+    "lapka-36-right.hex",
 ]
 dependencies = ["build"]
 
-[tasks.bin-peripheral]
+[tasks.bin-dongle]
 command = "cargo"
 args = [
     "objcopy",
     "--release",
     "--bin",
-    "peripheral",
+    "dongle",
     "--",
     "-O",
     "binary",
-    "lapka-36-peripheral.bin",
+    "lapka-36-dongle.bin",
+]
+dependencies = ["build"]
+
+[tasks.bin-left]
+command = "cargo"
+args = [
+    "objcopy",
+    "--release",
+    "--bin",
+    "left",
+    "--",
+    "-O",
+    "binary",
+    "lapka-36-left.bin",
+]
+dependencies = ["build"]
+
+[tasks.bin-right]
+command = "cargo"
+args = [
+    "objcopy",
+    "--release",
+    "--bin",
+    "right",
+    "--",
+    "-O",
+    "binary",
+    "lapka-36-right.bin",
 ]
 dependencies = ["build"]
 
 [tasks.bin]
-dependencies = ["bin-central", "bin-peripheral"]
+dependencies = ["bin-dongle", "bin-left", "bin-right"]
 
-[tasks.uf2-central]
+[tasks.uf2-dongle]
 install_crate = { crate_name = "cargo-hex-to-uf2", binary = "cargo", test_arg = [
     "hex-to-uf2",
     "--help",
@@ -85,15 +117,15 @@ command = "cargo"
 args = [
     "hex-to-uf2",
     "--input-path",
-    "lapka-36-central.hex",
+    "lapka-36-dongle.hex",
     "--output-path",
-    "lapka-36-central.uf2",
+    "lapka-36-dongle.uf2",
     "--family",
     "nrf52840",
 ]
-dependencies = ["objcopy-central"]
+dependencies = ["objcopy-dongle"]
 
-[tasks.uf2-peripheral]
+[tasks.uf2-left]
 install_crate = { crate_name = "cargo-hex-to-uf2", binary = "cargo", test_arg = [
     "hex-to-uf2",
     "--help",
@@ -102,13 +134,30 @@ command = "cargo"
 args = [
     "hex-to-uf2",
     "--input-path",
-    "lapka-36-peripheral.hex",
+    "lapka-36-left.hex",
     "--output-path",
-    "lapka-36-peripheral.uf2",
+    "lapka-36-left.uf2",
     "--family",
     "nrf52840",
 ]
-dependencies = ["objcopy-peripheral"]
+dependencies = ["objcopy-left"]
+
+[tasks.uf2-right]
+install_crate = { crate_name = "cargo-hex-to-uf2", binary = "cargo", test_arg = [
+    "hex-to-uf2",
+    "--help",
+] }
+command = "cargo"
+args = [
+    "hex-to-uf2",
+    "--input-path",
+    "lapka-36-right.hex",
+    "--output-path",
+    "lapka-36-right.uf2",
+    "--family",
+    "nrf52840",
+]
+dependencies = ["objcopy-right"]
 
 [tasks.uf2]
-dependencies = ["uf2-central", "uf2-peripheral"]
+dependencies = ["uf2-dongle", "uf2-left", "uf2-right"]

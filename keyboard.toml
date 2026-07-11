@@ -77,7 +77,7 @@ timeout = "300s"
 [behavior.one_shot_modifiers]
 activate_on_keypress = true
 # send_on_second_press = true
-# release_modifier_keys = [ "MO(3)", "MO(4)" ]
+release_modifiers_keys = [ "MO(3)", "MO(4)" ]
 
 [layout]
 rows = 4
