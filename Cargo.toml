@@ -10,7 +10,10 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-rmk = { version = "0.8", features = [
+rmk = { path="../rmk/rmk", default-features = false, features = [
+    "usb_log",
+    "storage",
+    "vial",
     "nrf52840_ble",
     "split",
     "async_matrix",
@@ -32,7 +35,7 @@ bt-hci = { version = "0.6", default-features = false, features = ["defmt"] }
 cortex-m = "0.7.7"
 cortex-m-rt = "0.7.5"
 embassy-time = { version = "0.5", features = ["tick-hz-32_768", "defmt", "defmt-timestamp-uptime"] }
-embassy-nrf = { version = "0.8", features = [
+embassy-nrf = { version = "0.11", features = [
     "defmt",
     "nrf52840",
     "time-driver-rtc1",
@@ -54,21 +57,24 @@ static_cell = "2"
 rand = { version = "0.8.4", default-features = false }
 rand_core = { version = "0.6" }
 rand_chacha = { version = "0.3", default-features = false }
-embassy-usb-driver = "=0.2.0"
+embassy-usb-driver = "=0.2.2"
 
 [build-dependencies]
 xz2 = "0.1.7"
 json = "0.12"
 const-gen = "1.6"
 
-# Split keyboard example
 [[bin]]
-name = "central"
-path = "src/central.rs"
+name = "dongle"
+path = "src/dongle.rs"
 
 [[bin]]
-name = "peripheral"
-path = "src/peripheral.rs"
+name = "left"
+path = "src/left.rs"
+
+[[bin]]
+name = "right"
+path = "src/right.rs"
 
 [profile.dev]
 codegen-units = 1      # better optimizations
