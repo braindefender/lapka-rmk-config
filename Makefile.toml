@@ -4,6 +4,10 @@ install_crate = { rustup_component_name = "llvm-tools" }
 [tasks.flip-link]
 install_crate = { crate_name = "flip-link", binary = "flip-link", test_arg = ["-h"] }
 
+[tasks.make-firmware-dir]
+command = "mkdir"
+args = ["-p", "firmware"]
+
 [tasks.build]
 command = "cargo"
 args = ["build", "--release"]
@@ -23,9 +27,9 @@ args = [
     "--",
     "-O",
     "ihex",
-    "lapka-36-dongle.hex",
+    "firmware/lapka-36-dongle.hex",
 ]
-dependencies = ["build"]
+dependencies = ["build", "make-firmware-dir"]
 
 [tasks.objcopy-left]
 install_crate = { crate_name = "cargo-binutils", binary = "cargo", test_arg = [
@@ -41,9 +45,9 @@ args = [
     "--",
     "-O",
     "ihex",
-    "lapka-36-left.hex",
+    "firmware/lapka-36-left.hex",
 ]
-dependencies = ["build"]
+dependencies = ["build", "make-firmware-dir"]
 
 [tasks.objcopy-right]
 install_crate = { crate_name = "cargo-binutils", binary = "cargo", test_arg = [
@@ -59,9 +63,9 @@ args = [
     "--",
     "-O",
     "ihex",
-    "lapka-36-right.hex",
+    "firmware/lapka-36-right.hex",
 ]
-dependencies = ["build"]
+dependencies = ["build", "make-firmware-dir"]
 
 [tasks.bin-dongle]
 command = "cargo"
@@ -73,9 +77,9 @@ args = [
     "--",
     "-O",
     "binary",
-    "lapka-36-dongle.bin",
+    "firmware/lapka-36-dongle.bin",
 ]
-dependencies = ["build"]
+dependencies = ["build", "make-firmware-dir"]
 
 [tasks.bin-left]
 command = "cargo"
@@ -87,9 +91,9 @@ args = [
     "--",
     "-O",
     "binary",
-    "lapka-36-left.bin",
+    "firmware/lapka-36-left.bin",
 ]
-dependencies = ["build"]
+dependencies = ["build", "make-firmware-dir"]
 
 [tasks.bin-right]
 command = "cargo"
@@ -101,9 +105,9 @@ args = [
     "--",
     "-O",
     "binary",
-    "lapka-36-right.bin",
+    "firmware/lapka-36-right.bin",
 ]
-dependencies = ["build"]
+dependencies = ["build", "make-firmware-dir"]
 
 [tasks.bin]
 dependencies = ["bin-dongle", "bin-left", "bin-right"]
@@ -117,9 +121,9 @@ command = "cargo"
 args = [
     "hex-to-uf2",
     "--input-path",
-    "lapka-36-dongle.hex",
+    "firmware/lapka-36-dongle.hex",
     "--output-path",
-    "lapka-36-dongle.uf2",
+    "firmware/lapka-36-dongle.uf2",
     "--family",
     "nrf52840",
 ]
@@ -134,9 +138,9 @@ command = "cargo"
 args = [
     "hex-to-uf2",
     "--input-path",
-    "lapka-36-left.hex",
+    "firmware/lapka-36-left.hex",
     "--output-path",
-    "lapka-36-left.uf2",
+    "firmware/lapka-36-left.uf2",
     "--family",
     "nrf52840",
 ]
@@ -151,13 +155,21 @@ command = "cargo"
 args = [
     "hex-to-uf2",
     "--input-path",
-    "lapka-36-right.hex",
+    "firmware/lapka-36-right.hex",
     "--output-path",
-    "lapka-36-right.uf2",
+    "firmware/lapka-36-right.uf2",
     "--family",
     "nrf52840",
 ]
 dependencies = ["objcopy-right"]
 
+[tasks.clean-hex]
+command = "rm"
+args = [
+    "firmware/lapka-36-dongle.hex",
+    "firmware/lapka-36-left.hex",
+    "firmware/lapka-36-right.hex",
+]
+
 [tasks.uf2]
-dependencies = ["uf2-dongle", "uf2-left", "uf2-right"]
+dependencies = ["uf2-dongle", "uf2-left", "uf2-right", "clean-hex"]
