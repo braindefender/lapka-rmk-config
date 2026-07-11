@@ -71,8 +71,10 @@ upper = 3
 lower = 4
 adjust = 5
 
-[behavior.one_shot_modifiers]
+[behavior.one_shot]
 timeout = "300s"
+
+[behavior.one_shot_modifiers]
 activate_on_keypress = true
 # send_on_second_press = true
 # release_modifier_keys = [ "MO(3)", "MO(4)" ]
