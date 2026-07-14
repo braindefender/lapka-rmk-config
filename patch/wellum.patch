@@ -1,0 +1,1105 @@
+diff --git a/docs/docs/main/docs/configuration/keymap_configuration/special_keys.md b/docs/docs/main/docs/configuration/keymap_configuration/special_keys.md
+index db345a88..1c37544b 100644
+--- a/docs/docs/main/docs/configuration/keymap_configuration/special_keys.md
++++ b/docs/docs/main/docs/configuration/keymap_configuration/special_keys.md
+@@ -13,3 +13,40 @@ In QMK an `AlternativeRepeatKey` is supported. This functionality is not impleme
+ ## Caps Word
+ 
+ RMK includes `CapsWordToggle`. It can be aliased with any of `caps_word` or `cword` in a keymap. Caps word capitalizes all characters until a breaking character such as space occurs.
++
++## LatchTap
++
++`LatchTap(modifier, key)` is a keymap action that **latches** a modifier for the lifetime of the current layer and **taps a key under it on each press**.
++It is designed for Alt/Ctrl/Gui-Tab style window switching, where you want to hold a modifier across several taps of a key without holding the modifier key yourself.
++
++Behavior:
++
++1. **First press**: the modifier is latched (engaged and kept active) and `key` is sent together with it. For example `LatchTap(LAlt, Tab)` sends `Alt+Tab`.
++2. **Release**: only `key` is released; the modifier stays latched. So after releasing you are left with `LAlt` still held.
++3. **Subsequent presses**: `key` is tapped again while the modifier remains engaged (e.g. `Tab` cycles through windows, `Alt` stays down).
++4. **Layer exit**: the latched modifier is released automatically when the layer it was engaged on is deactivated (for example when the momentary layer key `MO(n)` is released).
++
++This differs from the related action:
++
++- Unlike `LM(layer, modifier)`, the modifier is **not** bound to the layer-switch key. It is bound to this dedicated key, so you can place several independent `LatchTap` keys (with different modifiers/keys) on the **same** layer.
++
++`LatchTap` cooperates with other modifiers: its latched modifier is combined into the same HID report as held modifier keys, one-shot modifiers, and `WM`/`SHIFTED` keys.
++For example, if `LatchTap(LCtrl, Tab)` has latched `Ctrl` and you then activate `OSM(LShift)`, the next `LatchTap(LCtrl, Tab)` press reports `Ctrl+Shift+Tab`.
++
++Syntax: `LatchTap(modifier, key)` — the modifier comes first, the key second (matching the modifier-first order).
++The modifier accepts the same names as other actions (`LShift`, `LCtrl`, `LAlt`, `LGui`, `RShift`, `RCtrl`, `RAlt`, `RGui`), optionally combined with `|`.
++
++Example layout — a layer with three independent latching window-switch keys:
++
++```toml
++[[layer]]
++keys = """
++LatchTap(LCtrl, Tab)   LatchTap(LAlt, Tab)   LatchTap(LGui, Tab)
++"""
++```
++
++Typical usage: put `MO(n)` on a thumb key to enter the layer above, hold it, then tap `LatchTap(LAlt, Tab)` repeatedly to Alt-Tab through windows. Releasing `MO(n)` releases the latched `Alt`.
++
++::: note Rust API / Vial
++In a Rust keymap use the `latchtap!` macro, e.g. `latchtap!(ModifierCombination::LCTRL, Tab)`. `LatchTap` is not yet representable as a Vial keycode, so it can only be configured via `keyboard.toml` or the Rust API.
++:::
+diff --git a/rmk-config/src/keymap.pest b/rmk-config/src/keymap.pest
+index 76f99f68..ccd10999 100644
+--- a/rmk-config/src/keymap.pest
++++ b/rmk-config/src/keymap.pest
+@@ -4,7 +4,7 @@
+ WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
+ 
+ // Optional comments
+-COMMENT = _{ "//" ~ (!"\n" ~ ANY)* } 
++COMMENT = _{ "//" ~ (!"\n" ~ ANY)* }
+ 
+ // --- Helper Rules ---
+ 
+@@ -26,7 +26,7 @@ number = @{ ASCII_DIGIT+ }
+ layer_number = @{ number }
+ layer_name = @{ loose_identifier }
+ 
+-// The order is important here, as we want to match the number first 
++// The order is important here, as we want to match the number first
+ layer_reference = _{ layer_number | layer_name }
+ 
+ // Modifier Names
+@@ -49,14 +49,11 @@ no_action = @{ ^"No" ~ !(ASCII_ALPHANUMERIC) } // Case-insensitive "No" not foll
+ 
+ 
+ // Rule 3: Transparent Key
+-transparent_action = @{ ("_")+ | (^"Trns" ~ !ASCII_ALPHANUMERIC) } // One or more underscores or "Trns" followed by non-alphanumeric 
++transparent_action = @{ ("_")+ | (^"Trns" ~ !ASCII_ALPHANUMERIC) } // One or more underscores or "Trns" followed by non-alphanumeric
+ 
+ // Rule 1: WM(key, modifier) - Key with Modifier
+ wm_action = { ^"WM" ~ "(" ~ keycode_name ~ "," ~ modifier_combination ~ ")" }
+ 
+-// Rule 4.6: OSM(modifier) - One-Shot Modifier (requires quotes)
+-osm_action = { ^"OSM" ~ "(" ~ modifier_combination ~ ")" }
+-
+ // Rule 4.1: DF(n) - Switch Default Layer
+ df_action = { ^"DF" ~ "(" ~ layer_reference ~ ")" }
+ 
+@@ -72,6 +69,9 @@ lt_action = { ^"LT" ~ "(" ~ layer_reference ~ "," ~ nestable_action ~ ("," ~ pro
+ // Rule 4.5: OSL(n) - One-Shot Layer
+ osl_action = { ^"OSL" ~ "(" ~ layer_reference ~ ")" }
+ 
++// Rule 4.6: OSM(modifier) - One-Shot Modifier
++osm_action = { ^"OSM" ~ "(" ~ modifier_combination ~ ")" }
++
+ // Rule 4.7: TT(n) - Layer Activate or Tap Toggle
+ tt_action = { ^"TT" ~ "(" ~ layer_reference ~ ")" }
+ 
+@@ -113,12 +113,15 @@ morse_action = { (^"TD" | ^"MORSE") ~ "(" ~ number ~ ")" }
+ // Rule 9: Macro(n) - Trigger Macro
+ trigger_macro_action = { ^"MACRO" ~ "(" ~ number ~ ")" }
+ 
++// Rule 10: LatchTap(modifier, key) - Latch modifier for the layer, tap key
++latchtap_action = { ^"LatchTap" ~ "(" ~ modifier_combination ~ "," ~ keycode_name ~ ")" }
++
+ // --- Top Level Rules ---
+ 
+ // A single key action entry in the map
+ // Order is important: more specific function-like rules first, then aliases/specials, then simple keycodes.
+ key_action = _{ // Consume surrounding whitespace/comments implicitly
+-    wm_action | osm_action | layer_action | mt_action | th_action | shifted_action | morse_action | trigger_macro_action | no_action | transparent_action | simple_keycode
++    wm_action | osm_action | latchtap_action | layer_action | mt_action | th_action | shifted_action | morse_action | trigger_macro_action | no_action | transparent_action | simple_keycode
+ }
+ 
+ // The entire key map string: Start, zero or more key actions, End.
+diff --git a/rmk-config/src/layout.rs b/rmk-config/src/layout.rs
+index 99cd99f2..df1773f6 100644
+--- a/rmk-config/src/layout.rs
++++ b/rmk-config/src/layout.rs
+@@ -665,6 +665,44 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn test_latchtap_grammar() {
++        // LatchTap(modifier, key) is parsed as a single top-level action and
++        // forwarded verbatim (no layer references to resolve).
++        let aliases = HashMap::new();
++        let layer_names = HashMap::new();
++
++        let keymap = "LatchTap(LCtrl, Tab) LatchTap(LAlt, Tab) LatchTap(LGui, Tab)";
++        let result = KeyboardTomlConfig::keymap_parser(keymap, &aliases, &layer_names);
++
++        assert!(result.is_ok(), "{:?}", result);
++        assert_eq!(
++            result.unwrap(),
++            vec![
++                "LatchTap(LCtrl, Tab)",
++                "LatchTap(LAlt, Tab)",
++                "LatchTap(LGui, Tab)",
++            ]
++        );
++
++        // The grammar recognizes it as `latchtap_action`, case-insensitively.
++        for input in ["LatchTap(LCtrl, Tab)", "latchtap(LGui, Escape)", "LATCHTAP(RAlt, Home)"] {
++            let parsed = ConfigParser::parse(Rule::key_map, input);
++            assert!(parsed.is_ok(), "Failed to parse: {}", input);
++            let mut found = None;
++            for pair in parsed.unwrap() {
++                if pair.as_rule() == Rule::key_map {
++                    for inner in pair.into_inner() {
++                        if inner.as_rule() == Rule::latchtap_action {
++                            found = Some(inner.as_rule());
++                        }
++                    }
++                }
++            }
++            assert_eq!(found, Some(Rule::latchtap_action), "Input: {}", input);
++        }
++    }
++
+     #[test]
+     fn test_nested_actions_in_tap_hold_slots() {
+         let aliases = HashMap::new();
+diff --git a/rmk-config/src/lib.rs b/rmk-config/src/lib.rs
+index 976ff500..3807ecb6 100644
+--- a/rmk-config/src/lib.rs
++++ b/rmk-config/src/lib.rs
+@@ -688,6 +688,7 @@ pub(crate) struct OneShotConfig {
+ pub struct OneShotModifiersConfig {
+     pub activate_on_keypress: Option<bool>,
+     pub quick_release: Option<bool>,
++    pub cancel_ossm_on_layer_enter: Option<bool>,
+ }
+ 
+ /// Configurations for combos
+diff --git a/rmk-config/src/resolved/behavior.rs b/rmk-config/src/resolved/behavior.rs
+index 515dcecb..abeb252e 100644
+--- a/rmk-config/src/resolved/behavior.rs
++++ b/rmk-config/src/resolved/behavior.rs
+@@ -35,6 +35,7 @@ pub const AUTO_MOUSE_LAYER_MAX_NUM: usize = 4;
+ pub struct OneShot {
+     pub activate_on_keypress: Option<bool>,
+     pub quick_release: Option<bool>,
++    pub cancel_ossm_on_layer_enter: Option<bool>,
+ }
+ 
+ pub struct Combos {
+@@ -128,6 +129,7 @@ impl crate::KeyboardTomlConfig {
+         let one_shot_modifiers = toml_behavior.one_shot_modifiers.map(|o| OneShot {
+             activate_on_keypress: o.activate_on_keypress,
+             quick_release: o.quick_release,
++            cancel_ossm_on_layer_enter: o.cancel_ossm_on_layer_enter,
+         });
+ 
+         let combos = toml_behavior.combo.map(|c| Combos {
+diff --git a/rmk-macro/src/codegen/action_parser.rs b/rmk-macro/src/codegen/action_parser.rs
+index 4a0425b5..b243f194 100644
+--- a/rmk-macro/src/codegen/action_parser.rs
++++ b/rmk-macro/src/codegen/action_parser.rs
+@@ -251,6 +251,26 @@ fn parse_action(key: &str) -> TokenStream2 {
+             );
+         }
+         return quote! { ::rmk::types::action::Action::LayerOnWithModifier(#layer, #modifiers) };
++    } else if lower.starts_with("latchtap(") {
++        let keys = split_top_level(strip_call(key));
++        if keys.len() != 2 {
++            panic!(
++                "\n\u{274c} keyboard.toml: LatchTap(modifier, key) invalid, please check the documentation: https://rmk.rs/docs/features/configuration/layout.html"
++            );
++        }
++        let modifiers = parse_modifiers(&keys[0]);
++        if modifiers.is_empty() {
++            panic!(
++                "\n\u{274c} keyboard.toml: modifier in LatchTap(modifier, key) is not valid! Please check the documentation: https://rmk.rs/docs/features/configuration/layout.html"
++            );
++        }
++        let ident = get_key_with_alias(keys[1].clone());
++        return quote! {
++            ::rmk::types::action::Action::LatchTap(
++                #modifiers,
++                ::rmk::types::keycode::KeyCode::Hid(::rmk::types::keycode::HidKeyCode::#ident),
++            )
++        };
+     } else if lower.starts_with("mo(") {
+         let layer = parse_layer(key);
+         return quote! { ::rmk::types::action::Action::LayerOn(#layer) };
+@@ -516,6 +536,18 @@ mod tests {
+         assert!(squash(&expand("OSM(LShift)")).contains("Action::OneShotModifier"));
+     }
+ 
++    #[test]
++    fn latchtap_parses_modifier_and_key() {
++        let out = squash(&expand("LatchTap(LCtrl, Tab)"));
++        assert!(out.contains("Action::LatchTap("));
++        assert!(out.contains("ModifierCombination::new_from"));
++        assert!(out.contains("HidKeyCode::Tab"));
++        // Modifier first, key second (matches the Action variant order).
++        let (before, after) = out.split_once("Action::LatchTap(").unwrap();
++        assert!(before.ends_with("::rmk::types::action::"));
++        assert!(after.find("ModifierCombination").unwrap() < after.find("HidKeyCode::Tab").unwrap());
++    }
++
+     #[test]
+     fn mt_accepts_nested_with_modifier_tap() {
+         let out = squash(&expand("MT(WM(P, RAlt), LShift)"));
+diff --git a/rmk-macro/src/codegen/behavior.rs b/rmk-macro/src/codegen/behavior.rs
+index 67c76e42..dca6f512 100644
+--- a/rmk-macro/src/codegen/behavior.rs
++++ b/rmk-macro/src/codegen/behavior.rs
+@@ -52,11 +52,16 @@ fn expand_one_shot_modifiers(one_shot_modifiers: &Option<OneShot>) -> proc_macro
+                 Some(value) => quote! { quick_release: #value, },
+                 None => quote! {},
+             };
++            let cancel_ossm_on_layer_enter = match one_shot_modifier.cancel_ossm_on_layer_enter {
++                Some(value) => quote! { cancel_ossm_on_layer_enter: #value, },
++                None => quote! {},
++            };
+ 
+             quote! {
+                 ::rmk::config::OneShotModifiersConfig {
+                     #activate_on_keypress
+                     #quick_release
++                    #cancel_ossm_on_layer_enter
+                     ..Default::default()
+                 }
+             }
+diff --git a/rmk-types/src/action/mod.rs b/rmk-types/src/action/mod.rs
+index ca86c632..c3f29a22 100644
+--- a/rmk-types/src/action/mod.rs
++++ b/rmk-types/src/action/mod.rs
+@@ -45,6 +45,23 @@ pub enum Action {
+     Modifier(ModifierCombination),
+     /// Key stroke with modifier combination triggered.
+     KeyWithModifier(KeyCode, ModifierCombination),
++    /// Latch a modifier for the lifetime of the current layer and tap a key
++    /// under it on each press.
++    ///
++    /// On the first press the modifier is latched (engaged and kept active) and
++    /// the key is sent together with it. On release the key is released but the
++    /// modifier stays latched. Subsequent presses send the key again while the
++    /// modifier remains engaged, so the key can be "cycled" (e.g. `Tab` for
++    /// Alt/Ctrl/Gui-Tab style window switching). The latched modifier is
++    /// released automatically when the layer it was engaged on is deactivated
++    /// (for example when the momentary layer key is released).
++    ///
++    /// Unlike [`Action::OneShotModifier`] the modifier is not released on the
++    /// next key press; unlike [`Action::LayerOnWithModifier`] the modifier is
++    /// not bound to the layer-switch key but to this dedicated key, allowing
++    /// several independent `LatchTap` keys (different modifiers/keys) on the
++    /// same layer.
++    LatchTap(ModifierCombination, KeyCode),
+     /// Activate a layer
+     LayerOn(u8),
+     /// Activate a layer with modifier combination triggered.
+diff --git a/rmk/src/config/behavior.rs b/rmk/src/config/behavior.rs
+index 24316ca2..f945591f 100644
+--- a/rmk/src/config/behavior.rs
++++ b/rmk/src/config/behavior.rs
+@@ -124,6 +124,9 @@ pub struct OneShotModifiersConfig {
+     pub activate_on_keypress: bool,
+     /// If true, OSM releases on next key press (ZMK skq); if false, on next key release (ZMK skn)
+     pub quick_release: bool,
++    /// If true, activating a layer key (MO, TG, OSL, ...) while a one-shot modifier
++    /// is active cancels that modifier, so the layer's keys are used without it.
++    pub cancel_ossm_on_layer_enter: bool,
+ }
+ 
+ /// Config for combo behavior
+diff --git a/rmk/src/keyboard.rs b/rmk/src/keyboard.rs
+index 35653f60..02faac6f 100644
+--- a/rmk/src/keyboard.rs
++++ b/rmk/src/keyboard.rs
+@@ -28,7 +28,7 @@ use crate::keyboard::combo::Combo;
+ use crate::keyboard::fork::ActiveFork;
+ use crate::keyboard::held_buffer::{HeldBuffer, HeldKey, KeyState};
+ use crate::keyboard::mouse::{MouseAction, MouseState};
+-use crate::keyboard::oneshot::OneShotState;
++use crate::keyboard::oneshot::{OneShotState, OsmUpdate};
+ use crate::keyboard_macros::MacroOperation;
+ use crate::keymap::KeyMap;
+ #[cfg(all(feature = "split", feature = "_ble"))]
+@@ -207,6 +207,12 @@ pub struct Keyboard<'a> {
+     /// Oneshot Modifier state
+     osm_state: OneShotState<ModifierCombination>,
+ 
++    /// LatchTap state: a modifier latched by a `LatchTap` action and the layer
++    /// it was engaged on. The modifier stays engaged until that layer is
++    /// deactivated (see [`Keyboard::cleanup_latch_tap`]).
++    latched_modifiers: ModifierCombination,
++    latched_layer: Option<u8>,
++
+     /// Caps Word state machine
+     caps_word: CapsWordState,
+ 
+@@ -260,6 +266,8 @@ impl<'a> Keyboard<'a> {
+             last_press_time: Instant::now(),
+             osl_state: OneShotState::default(),
+             osm_state: OneShotState::default(),
++            latched_modifiers: ModifierCombination::default(),
++            latched_layer: None,
+             caps_word: CapsWordState::default(),
+             with_modifiers: ModifierCombination::default(),
+             macro_texting: false,
+@@ -377,6 +385,10 @@ impl<'a> Keyboard<'a> {
+         } else {
+             self.process_key_action(key_action, event, false, event_time).await
+         }
++
++        // Release any latched LatchTap modifier whose layer was just deactivated
++        // (e.g. when the momentary layer key is released).
++        self.cleanup_latch_tap().await;
+     }
+ 
+     async fn process_key_action(
+@@ -1301,15 +1313,12 @@ impl<'a> Keyboard<'a> {
+             }
+             Action::OneShotLayer(l) => {
+                 self.process_action_osl(l, event).await;
+-                // Process OSM to avoid the OSL state stuck when an OSL is followed by an OSM
+-                self.update_osm(event);
+             }
+             Action::OneShotModifier(m) => {
+                 self.process_action_osm(m, event).await;
+-                // Process OSL to avoid the OSM state stuck when an OSM is followed by an OSL
+-                self.update_osl(event);
+             }
+             Action::OneShotKey(_k) => warn!("One-shot key is not supported: {:?}", action),
++            Action::LatchTap(modifiers, key) => self.process_action_latch_tap(modifiers, key, event).await,
+             Action::Light(_light_action) => warn!("Light controll is not supported"),
+             Action::KeyboardControl(c) => self.process_action_keyboard_control(c, event).await,
+             Action::Special(special_key) => self.process_action_special(special_key, event).await,
+@@ -1332,6 +1341,47 @@ impl<'a> Keyboard<'a> {
+             }
+             _ => warn!("Action variant not supported: {:?}", action),
+         }
++
++        // Update one-shot modifier/layer state for every processed action.
++        // `update_osm` also releases active one-shot modifiers when a layer key is
++        // activated while `behavior.one_shot_modifiers.cancel_ossm_on_layer_enter` is set.
++        //
++        // The one-shot modifier key itself is excluded from `update_osm`: its own
++        // press/release is already handled by `process_action_osm`, and calling
++        // `update_osm` here would prematurely consume the `Single` state (e.g. turn
++        // a normal one-shot into a held modifier, or release it on its own release).
++        // Symmetrically, the one-shot layer key itself is excluded from `update_osl`.
++        let os_config = self.keymap.one_shot_modifiers_config();
++        let quick_release = os_config.quick_release;
++        let activate_on_keypress = os_config.activate_on_keypress;
++        let osm_update = match action {
++            Action::OneShotModifier(_) => OsmUpdate::None,
++            _ => self.update_osm(event, action),
++        };
++        match osm_update {
++            OsmUpdate::Cancelled => {
++                // A configured release key cancelled an actively-held one-shot modifier.
++                // The modifier was being reported to the host (activate_on_keypress), so
++                // emit a release report to drop it from the host.
++                if activate_on_keypress {
++                    self.send_keyboard_report_with_resolved_modifiers(false).await;
++                }
++            }
++            OsmUpdate::Consumed if quick_release && event.pressed => {
++                let basic_key = match action {
++                    Action::Key(k) | Action::KeyWithModifier(k, _) => k.is_basic_keyboard_key(),
++                    _ => false,
++                };
++                if basic_key {
++                    self.send_keyboard_report_with_resolved_modifiers(true).await;
++                }
++            }
++            _ => (),
++        }
++        match action {
++            Action::OneShotLayer(_) => (),
++            _ => self.update_osl(event),
++        }
+     }
+ 
+     /// Tap action, send a key when the key is pressed, then release the key.
+@@ -1362,7 +1412,7 @@ impl<'a> Keyboard<'a> {
+     /// - one-shot modifiers
+     pub fn resolve_explicit_modifiers(&self, pressed: bool) -> ModifierCombination {
+         // if a one-shot modifier is active, decorate the hid report of keypress with those modifiers
+-        let mut result = self.held_modifiers;
++        let mut result = self.held_modifiers | self.latched_modifiers;
+ 
+         // OneShotState::Held keeps the temporary modifiers active until the key is released
+         if pressed {
+@@ -1570,11 +1620,6 @@ impl<'a> Keyboard<'a> {
+             _ => warn!("KeyCode variant not supported: {:?}", key),
+         }
+ 
+-        let quick_release = self.keymap.one_shot_modifiers_config().quick_release;
+-        let osm_consumed = self.update_osm(event);
+-        if quick_release && osm_consumed && key.is_basic_keyboard_key() && event.pressed {
+-            self.send_keyboard_report_with_resolved_modifiers(true).await;
+-        }
+         self.update_osl(event);
+     }
+ 
+@@ -1588,6 +1633,48 @@ impl<'a> Keyboard<'a> {
+         }
+     }
+ 
++    /// Process a `LatchTap` action: latch a modifier for the lifetime of the
++    /// current layer and tap `key` under it on each press.
++    ///
++    /// On press the modifier is engaged (or extended) and the key is sent
++    /// together with it. On release the key is released while the modifier
++    /// stays latched, so repeated presses cycle the key with the modifier held.
++    /// The latched modifier is released by [`Keyboard::cleanup_latch_tap`] when
++    /// the layer it was engaged on is deactivated.
++    ///
++    /// The latched modifier is folded into the resolved modifiers, so it
++    /// combines naturally with other modifiers (held keys, one-shot modifiers,
++    /// `KeyWithModifier`, ...): a `LatchTap(LCtrl, Tab)` tapped while an OSM
++    /// `LShift` is active reports `LCtrl+LShift+Tab`.
++    async fn process_action_latch_tap(&mut self, modifiers: ModifierCombination, key: KeyCode, event: KeyboardEvent) {
++        if event.pressed {
++            // Engage (or extend) the latched modifier, and remember the layer
++            // it belongs to so cleanup releases it when that layer goes away.
++            self.latched_modifiers |= modifiers;
++            self.latched_layer = Some(self.keymap.get_activated_layer());
++        }
++        // Sending the key through the normal path means the report already
++        // includes the latched modifier (plus any OSM/held modifiers). On
++        // release only the key is lifted; the latch is intentionally kept.
++        self.process_action_key(key, event).await;
++    }
++
++    /// Release any latched `LatchTap` modifier whose layer is no longer active.
++    ///
++    /// Called after every processed key event. When the layer a `LatchTap` was
++    /// engaged on is deactivated (e.g. the momentary layer key is released),
++    /// the latched modifier is dropped from the report so the host sees it as
++    /// released.
++    async fn cleanup_latch_tap(&mut self) {
++        if let Some(layer) = self.latched_layer {
++            if !self.keymap.is_layer_active(layer) {
++                self.latched_modifiers = ModifierCombination::default();
++                self.latched_layer = None;
++                self.send_keyboard_report_with_resolved_modifiers(false).await;
++            }
++        }
++    }
++
+     /// Process consumer control action. Consumer control keys are keys in hid consumer page, such as media keys.
+     async fn process_action_consumer_control(&mut self, key: ConsumerKey, event: KeyboardEvent) {
+         self.media_report.usage_id = if event.pressed { key as u16 } else { 0 };
+diff --git a/rmk/src/keyboard/oneshot.rs b/rmk/src/keyboard/oneshot.rs
+index aa8b1b75..8afb756b 100644
+--- a/rmk/src/keyboard/oneshot.rs
++++ b/rmk/src/keyboard/oneshot.rs
+@@ -1,5 +1,6 @@
+ use embassy_futures::select::{Either, select};
+ use embassy_time::Timer;
++use rmk_types::action::Action;
+ use rmk_types::modifier::ModifierCombination;
+ 
+ use crate::event::KeyboardEvent;
+@@ -19,6 +20,38 @@ pub enum OneShotState<T> {
+     None,
+ }
+ 
++/// Outcome of updating the one-shot modifier state for a processed action.
++pub(crate) enum OsmUpdate {
++    /// One-shot modifier state unchanged.
++    None,
++    /// One-shot modifier was consumed by a normal key (quick-release on press or
++    /// chain-mode on release); the key's own HID report already reflects it.
++    Consumed,
++    /// A layer key (`cancel_ossm_on_layer_enter`) cancelled an actively-held
++    /// one-shot modifier; the caller must emit a release report to drop the
++    /// modifier from the host.
++    Cancelled,
++}
++
++/// Whether an action enters/modifies a layer (MO, TG, OSL, `DefaultLayer`, ...).
++/// Such actions cancel an active one-shot modifier when
++/// `behavior.one_shot_modifiers.cancel_ossm_on_layer_enter` is set.
++pub(crate) fn action_is_layer_action(action: &Action) -> bool {
++    matches!(
++        action,
++        Action::LayerOn(_)
++            | Action::LayerOnWithModifier(_, _)
++            | Action::LayerOff(_)
++            | Action::LayerToggle(_)
++            | Action::LayerToggleOnly(_)
++            | Action::DefaultLayer(_)
++            | Action::PersistentDefaultLayer(_)
++            | Action::TriLayerLower
++            | Action::TriLayerUpper
++            | Action::OneShotLayer(_)
++    )
++}
++
+ impl<T> OneShotState<T> {
+     /// Get the current one shot value if any
+     pub fn value(&self) -> Option<&T> {
+@@ -161,23 +194,51 @@ impl<'a> Keyboard<'a> {
+     }
+ 
+     /// Update OSM state based on the keyboard event.
+-    /// Returns `true` if the OSM was consumed (transitioned from Single to None).
+-    pub(crate) fn update_osm(&mut self, event: KeyboardEvent) -> bool {
+-        let quick_release = self.keymap.one_shot_modifiers_config().quick_release;
++    /// Returns how the OSM was affected (see [`OsmUpdate`]).
++    pub(crate) fn update_osm(&mut self, event: KeyboardEvent, action: Action) -> OsmUpdate {
++        let config = self.keymap.one_shot_modifiers_config();
++        let quick_release = config.quick_release;
++
++        // With `cancel_ossm_on_layer_enter`, activating a layer key while a one-shot
++        // modifier is active cancels that modifier. Cancellation happens on the layer
++        // key *press* — the moment the layer actually becomes active — so the layer's
++        // keys are used without the modifier. If no modifier is active, there is
++        // nothing to cancel.
++        if config.cancel_ossm_on_layer_enter && event.pressed && action_is_layer_action(&action) {
++            if self.osm_state.value().is_some() {
++                self.osm_state = OneShotState::None;
++                return OsmUpdate::Cancelled;
++            }
++            return OsmUpdate::None;
++        }
++
+         match self.osm_state {
+-            OneShotState::Initial(m) => {
++            OneShotState::Initial(m) if event.pressed => {
++                // Another key was pressed while the one-shot modifier key is still
++                // held: treat it as a normal held modifier from now on. A *release*
++                // of another key must not trigger this transition (otherwise a
++                // layer/one-shot release key being let go before the modifier key
++                // would wrongly convert the modifier to `Held` and release it).
+                 self.osm_state = OneShotState::Held(m);
+-                false
++                OsmUpdate::None
+             }
+             OneShotState::Single(_) if quick_release && event.pressed => {
+                 self.osm_state = OneShotState::None;
+-                true
++                OsmUpdate::Consumed
+             }
+-            OneShotState::Single(_) if !quick_release && !event.pressed => {
++            OneShotState::Single(_)
++                if !quick_release
++                    && !event.pressed
++                    && (!config.cancel_ossm_on_layer_enter || !action_is_layer_action(&action)) =>
++            {
++                // Chain mode: a *normal* key release consumes the one-shot. A layer
++                // key release only does so when `cancel_ossm_on_layer_enter` is unset;
++                // when it is set, cancellation is handled on the layer key's press
++                // above, and its release must leave the modifier untouched.
+                 self.osm_state = OneShotState::None;
+-                true
++                OsmUpdate::Consumed
+             }
+-            _ => false,
++            _ => OsmUpdate::None,
+         }
+     }
+ 
+diff --git a/rmk/src/layout_macro.rs b/rmk/src/layout_macro.rs
+index f64dba66..6c0bab79 100644
+--- a/rmk/src/layout_macro.rs
++++ b/rmk/src/layout_macro.rs
+@@ -86,6 +86,32 @@ macro_rules! wm {
+ /// a!(No)           // KeyAction::No - empty action
+ /// a!(Transparent)  // KeyAction::Transparent - pass through to next layer
+ /// ```
++/// Create a `LatchTap` action: latch a modifier for the lifetime of the
++/// current layer and tap a key under it on each press.
++///
++/// This is useful for Alt/Ctrl/Gui-Tab style window switching: tap the key to
++/// send `modifier+key`, release it (the modifier stays latched), tap again to
++/// cycle `key` while the modifier is held, and the modifier is released when
++/// the layer is deactivated.
++///
++/// # Parameters
++/// - `$m`: A `ModifierCombination` expression
++/// - `$k`: The HID keycode identifier to tap
++///
++/// # Example
++/// ```ignore
++/// latchtap!(ModifierCombination::LCTRL, Tab)  // Ctrl+Tab, latched until layer exit
++/// ```
++#[macro_export]
++macro_rules! latchtap {
++    ($m: expr, $k: ident) => {
++        $crate::types::action::KeyAction::Single($crate::types::action::Action::LatchTap(
++            $m,
++            $crate::types::keycode::KeyCode::Hid($crate::types::keycode::HidKeyCode::$k),
++        ))
++    };
++}
++
+ #[macro_export]
+ macro_rules! a {
+     ($a: ident) => {
+diff --git a/rmk/tests/keyboard_latchtap_test.rs b/rmk/tests/keyboard_latchtap_test.rs
+new file mode 100644
+index 00000000..afbcdceb
+--- /dev/null
++++ b/rmk/tests/keyboard_latchtap_test.rs
+@@ -0,0 +1,287 @@
++//! Tests for `LatchTap` action.
++//!
++//! `LatchTap(modifier, key)` latches `modifier` for the lifetime of the current
++//! layer and taps `key` under it on each press, giving Alt/Ctrl/Gui-Tab style
++//! window switching. This is the generalization of the old `Tabber` action,
++//! extended with an arbitrary `KeyCode` (not just `Tab`) and made to cooperate
++//! with other modifiers (held keys and one-shot modifiers).
++
++pub mod common;
++
++use rmk::config::{BehaviorConfig, OneShotModifiersConfig};
++use rmk::types::modifier::ModifierCombination;
++
++mod latchtap_test {
++    use rmk::config::PositionalConfig;
++    use rmk::keyboard::Keyboard;
++    use rmk::types::action::KeyAction;
++    use rmk::{a, k, latchtap, mo, osm};
++
++    use super::*;
++    use crate::common::{KC_LALT, KC_LCTRL, KC_LGUI, KC_LSHIFT, wrap_keymap};
++
++    // KEYMAP
++    // Layer 0: A             B              C             MO(1)        LShift       RShift
++    // Layer 1: LatchTap(LGui) LatchTap(LCtrl) LatchTap(LAlt) OSM(LShift) Transparent  Transparent
++
++    const KEYMAP: [[[KeyAction; 6]; 1]; 2] = [
++        [[
++            // Layer 0
++            k!(A),
++            k!(B),
++            k!(C),
++            mo!(1), // MO(1) to activate layer 1
++            k!(LShift),
++            k!(RShift),
++        ]],
++        [[
++            // Layer 1
++            latchtap!(ModifierCombination::LGUI, Tab),
++            latchtap!(ModifierCombination::LCTRL, Tab),
++            latchtap!(ModifierCombination::LALT, Tab),
++            osm!(ModifierCombination::new_from(false, false, false, true, false)), // OSM(LShift)
++            a!(Transparent),
++            a!(Transparent),
++        ]],
++    ];
++
++    fn create_test_keyboard() -> Keyboard<'static> {
++        let behavior_config: &'static mut BehaviorConfig = Box::leak(Box::new(BehaviorConfig::default()));
++        let per_key_config: &'static PositionalConfig<1, 6> = Box::leak(Box::new(PositionalConfig::default()));
++        Keyboard::new(wrap_keymap(KEYMAP, per_key_config, behavior_config))
++    }
++
++    fn create_test_keyboard_with_one_shot_modifiers_config(config: OneShotModifiersConfig) -> Keyboard<'static> {
++        let behavior_config: &'static mut BehaviorConfig = Box::leak(Box::new(BehaviorConfig {
++            one_shot_modifiers: config,
++            ..BehaviorConfig::default()
++        }));
++        let per_key_config: &'static PositionalConfig<1, 6> = Box::leak(Box::new(PositionalConfig::default()));
++        Keyboard::new(wrap_keymap(KEYMAP, per_key_config, behavior_config))
++    }
++
++    /// LatchTap Test Case 1: Basic Flow
++    ///
++    /// Sequence:
++    /// - Press MO(1) to activate layer 1
++    /// - Press LatchTap(LGui) → Should send LGui+Tab
++    /// - Release LatchTap → Should release Tab, keep LGui held
++    /// - Press LatchTap again → Should send Tab only
++    /// - Release LatchTap → Should release Tab only
++    /// - Release MO(1) → Should release LGui
++    ///
++    /// Expected:
++    /// - LGui+Tab on first press
++    /// - Only LGui held after first release
++    /// - LGui+Tab on second press
++    /// - Only LGui held after second release
++    /// - All released after MO(1) release
++    #[test]
++    fn test_latchtap_basic_flow() {
++        key_sequence_test! {
++            keyboard: create_test_keyboard(),
++            sequence: [
++                [0, 3, true, 10],   // Press MO(1)
++                [0, 0, true, 10],   // Press LatchTap(LGui)
++                [0, 0, false, 10],  // Release LatchTap
++                [0, 0, true, 10],   // Press LatchTap again
++                [0, 0, false, 10],  // Release LatchTap again
++                [0, 3, false, 10],  // Release MO(1)
++            ],
++            expected_reports: [
++                [KC_LGUI, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]], // LGui+Tab on first press
++                [KC_LGUI, [0, 0, 0, 0, 0, 0]],              // Only LGui held after first release
++                [KC_LGUI, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]], // LGui+Tab on second press
++                [KC_LGUI, [0, 0, 0, 0, 0, 0]],              // Only LGui held after second release
++                [0, [0, 0, 0, 0, 0, 0]],                    // All released after MO(1) release
++            ]
++        };
++    }
++
++    /// LatchTap Test Case 2: Shift Integration
++    ///
++    /// Sequence:
++    /// - Press MO(1) to activate layer 1
++    /// - Press LatchTap(LCtrl) → Should send LCtrl+Tab
++    /// - Release LatchTap → Should release Tab, keep LCtrl held
++    /// - Press LShift
++    /// - Press LatchTap → Should send LCtrl+LShift+Tab
++    /// - Release LatchTap → Should release Tab, keep LCtrl held
++    /// - Release LShift
++    /// - Release MO(1) → Should release LCtrl
++    ///
++    /// Expected:
++    /// - LCtrl+Tab on first press
++    /// - Only LCtrl held after first release
++    /// - LShift is added
++    /// - LCtrl+LShift+Tab on second press
++    /// - LCtrl+LShift held after second release
++    /// - Only LCtrl held after LShift release
++    /// - All released after MO(1) release
++    #[test]
++    fn test_latchtap_with_shift() {
++        key_sequence_test! {
++            keyboard: create_test_keyboard(),
++            sequence: [
++                [0, 3, true, 10],   // Press MO(1)
++                [0, 1, true, 10],   // Press LatchTap(LCtrl)
++                [0, 1, false, 10],  // Release LatchTap(LCtrl)
++                [0, 4, true, 10],   // Press LShift
++                [0, 1, true, 10],   // Press LatchTap(LCtrl)
++                [0, 1, false, 10],  // Release LatchTap(LCtrl)
++                [0, 4, false, 10],  // Release LShift
++                [0, 3, false, 10],  // Release MO(1)
++            ],
++            expected_reports: [
++                [KC_LCTRL, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]],              // LCtrl+Tab on first press
++                [KC_LCTRL, [0, 0, 0, 0, 0, 0]],                           // Only LCtrl held
++                [KC_LCTRL | KC_LSHIFT, [0, 0, 0, 0, 0, 0]],               // LShift pressed
++                [KC_LCTRL | KC_LSHIFT, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]],  // LCtrl+LShift+Tab
++                [KC_LCTRL | KC_LSHIFT, [0, 0, 0, 0, 0, 0]],               // LCtrl+LShift held
++                [KC_LCTRL, [0, 0, 0, 0, 0, 0]],                           // Only LCtrl held
++                [0, [0, 0, 0, 0, 0, 0]],                                  // All released
++            ]
++        };
++    }
++
++    /// LatchTap Test Case 3: Rapid Presses
++    ///
++    /// Sequence:
++    /// - Press MO(1) to activate layer 1
++    /// - Rapidly press and release LatchTap 3 times
++    /// - Release MO(1)
++    ///
++    /// Expected:
++    /// - LGui+Tab on each press
++    /// - Only LGui held after each release
++    /// - All released after MO(1) release
++    #[test]
++    fn test_latchtap_rapid_presses() {
++        key_sequence_test! {
++            keyboard: create_test_keyboard(),
++            sequence: [
++                [0, 3, true, 10],   // Press MO(1)
++                [0, 0, true, 10],   // Press LatchTap
++                [0, 0, false, 10],  // Release LatchTap
++                [0, 0, true, 10],   // Press LatchTap
++                [0, 0, false, 10],  // Release LatchTap
++                [0, 0, true, 10],   // Press LatchTap
++                [0, 0, false, 10],  // Release LatchTap
++                [0, 3, false, 10],  // Release MO(1)
++            ],
++            expected_reports: [
++                [KC_LGUI, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]], // LGui+Tab
++                [KC_LGUI, [0, 0, 0, 0, 0, 0]],              // Only LGui held
++                [KC_LGUI, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]], // LGui+Tab
++                [KC_LGUI, [0, 0, 0, 0, 0, 0]],              // Only LGui held
++                [KC_LGUI, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]], // LGui+Tab
++                [KC_LGUI, [0, 0, 0, 0, 0, 0]],              // Only LGui held
++                [0, [0, 0, 0, 0, 0, 0]],                    // All released
++            ]
++        };
++    }
++
++    /// LatchTap Test Case 4: Different Modifiers
++    ///
++    /// Sequence:
++    /// - Press MO(1) to activate layer 1
++    /// - Press LatchTap(LAlt)
++    /// - Release LatchTap
++    /// - Release MO(1)
++    ///
++    /// Expected:
++    /// - LAlt+Tab on press
++    /// - Only LAlt held after release
++    /// - All released after MO(1) release
++    #[test]
++    fn test_latchtap_with_alt() {
++        key_sequence_test! {
++            keyboard: create_test_keyboard(),
++            sequence: [
++                [0, 3, true, 10],   // Press MO(1)
++                [0, 2, true, 10],   // Press LatchTap(LAlt)
++                [0, 2, false, 10],  // Release LatchTap
++                [0, 3, false, 10],  // Release MO(1)
++            ],
++            expected_reports: [
++                [KC_LALT, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]], // LAlt+Tab
++                [KC_LALT, [0, 0, 0, 0, 0, 0]],              // Only LAlt held
++                [0, [0, 0, 0, 0, 0, 0]],                    // All released
++            ]
++        };
++    }
++
++    /// LatchTap Test Case 5: Layer Change Cleanup
++    ///
++    /// Sequence:
++    /// - Press MO(1) to activate layer 1
++    /// - Press LatchTap(LGui)
++    /// - Release LatchTap
++    /// - Release MO(1) immediately (should clean up)
++    ///
++    /// Expected:
++    /// - LGui+Tab on press
++    /// - Only LGui held after release
++    /// - All released after MO(1) release (cleanup)
++    #[test]
++    fn test_latchtap_layer_change_cleanup() {
++        key_sequence_test! {
++            keyboard: create_test_keyboard(),
++            sequence: [
++                [0, 3, true, 10],   // Press MO(1)
++                [0, 0, true, 10],   // Press LatchTap(LGui)
++                [0, 0, false, 10],  // Release LatchTap
++                [0, 3, false, 10],  // Release MO(1) - should clean up LatchTap
++            ],
++            expected_reports: [
++                [KC_LGUI, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]], // LGui+Tab
++                [KC_LGUI, [0, 0, 0, 0, 0, 0]],              // Only LGui held
++                [0, [0, 0, 0, 0, 0, 0]],                    // All released (cleanup)
++            ]
++        };
++    }
++
++    /// LatchTap Test Case 6: One-Shot Modifier Cooperation
++    ///
++    /// With `one_shot_modifiers.activate_on_keypress = true`, an OSM modifier
++    /// engaged while a LatchTap is latched must persist across LatchTap taps
++    /// and combine into the same report (LCtrl + LShift + Tab).
++    ///
++    /// Sequence:
++    /// - Press MO(1) to activate layer 1
++    /// - Press LatchTap(LCtrl) → LCtrl+Tab
++    /// - Release LatchTap → LCtrl held
++    /// - Press OSM(LShift) → LCtrl+LShift (activate_on_keypress)
++    /// - Press LatchTap(LCtrl) → LCtrl+LShift+Tab
++    /// - Release LatchTap → LCtrl+LShift held
++    /// - Release OSM(LShift) → LCtrl held (OSM released)
++    /// - Release MO(1) → All released (cleanup)
++    #[test]
++    fn test_latchtap_with_osm() {
++        key_sequence_test! {
++            keyboard: create_test_keyboard_with_one_shot_modifiers_config(OneShotModifiersConfig {
++                activate_on_keypress: true,
++                ..OneShotModifiersConfig::default()
++            }),
++            sequence: [
++                [0, 3, true, 10],   // Press MO(1)
++                [0, 1, true, 10],   // Press LatchTap(LCtrl)
++                [0, 1, false, 10],  // Release LatchTap
++                [0, 3, true, 10],   // Press OSM(LShift) on layer 1
++                [0, 1, true, 10],   // Press LatchTap(LCtrl)
++                [0, 1, false, 10],  // Release LatchTap
++                [0, 3, false, 10],  // Release OSM(LShift)
++                [0, 3, false, 10],  // Release MO(1)
++            ],
++            expected_reports: [
++                [KC_LCTRL, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]],                  // LCtrl+Tab
++                [KC_LCTRL, [0, 0, 0, 0, 0, 0]],                              // Only LCtrl held
++                [KC_LCTRL | KC_LSHIFT, [0, 0, 0, 0, 0, 0]],                  // LCtrl+LShift (OSM on)
++                [KC_LCTRL | KC_LSHIFT, [kc_to_u8!(Tab), 0, 0, 0, 0, 0]],      // LCtrl+LShift+Tab
++                [KC_LCTRL | KC_LSHIFT, [0, 0, 0, 0, 0, 0]],                  // LCtrl+LShift held
++                [KC_LCTRL, [0, 0, 0, 0, 0, 0]],                              // Only LCtrl held (OSM off)
++                [0, [0, 0, 0, 0, 0, 0]],                                      // All released (cleanup)
++            ]
++        };
++    }
++}
+diff --git a/rmk/tests/keyboard_one_shot_test.rs b/rmk/tests/keyboard_one_shot_test.rs
+index b169d138..02c2dccb 100644
+--- a/rmk/tests/keyboard_one_shot_test.rs
++++ b/rmk/tests/keyboard_one_shot_test.rs
+@@ -8,7 +8,7 @@ mod one_shot_test {
+     use rmk::config::{OneShotConfig, PositionalConfig};
+     use rmk::keyboard::Keyboard;
+     use rmk::types::action::KeyAction;
+-    use rmk::{k, osl, osm, th, wm};
++    use rmk::{a, k, mo, osl, osm, th, wm};
+ 
+     use super::*;
+     use crate::common::{KC_LCTRL, KC_LGUI, KC_LSHIFT, wrap_keymap};
+@@ -389,6 +389,42 @@ mod one_shot_test {
+         };
+     }
+ 
++    /// OSM Test Case: cancel_ossm_on_layer_enter
++    ///
++    /// Config:
++    /// - timeout: 100ms
++    /// - cancel_ossm_on_layer_enter: true
++    ///
++    /// Sequence:
++    /// - Press and Release OSM LShift
++    /// - Press and Release OSL(1) (a layer key)
++    /// - Press and Release A (which on layer 1 is C)
++    ///
++    /// Expected:
++    /// - Entering the layer cancels the active one-shot modifier,
++    ///   so C is sent without LShift.
++    #[test]
++    fn test_osm_release_modifiers_keys() {
++        key_sequence_test! {
++            keyboard: create_test_keyboard_with_one_shot_modifiers_config(OneShotModifiersConfig {
++                cancel_ossm_on_layer_enter: true,
++                ..OneShotModifiersConfig::default()
++            }),
++            sequence: [
++                [0, 0, true, 10],   // Press OSM LShift
++                [0, 0, false, 10],  // Release OSM LShift
++                [0, 1, true, 10],   // Press OSL(1) - layer key cancels OSM
++                [0, 1, false, 10],  // Release OSL(1)
++                [0, 2, true, 10],   // Press A -> C on layer 1
++                [0, 2, false, 10],  // Release A
++            ],
++            expected_reports: [
++                [0, [kc_to_u8!(C), 0, 0, 0, 0, 0]], // C without LShift (OSM released)
++                [0, [0, 0, 0, 0, 0, 0]], // All released
++            ]
++        }
++    }
++
+     // OSL Tests
+     #[test]
+     fn test_osl_basic_single_behavior() {
+@@ -755,4 +791,122 @@ mod one_shot_test {
+             ]
+         };
+     }
++
++    // MO + OSM layer-cancel tests
++    //
++    // KEYMAP
++    // Layer 0: MO(1)              A              B
++    // Layer 1: Transparent        OSM(LShift)    OSM(LCtrl)
++    //
++    // Config:
++    // - activate_on_keypress: true
++    // - cancel_ossm_on_layer_enter: true
++
++    const MO_OSM_KEYMAP: [[[KeyAction; 3]; 1]; 2] = [
++        [[
++            // Layer 0
++            mo!(1), // MO(1)
++            k!(A),  // A
++            k!(B),  // B
++        ]],
++        [[
++            // Layer 1
++            a!(Transparent), // Falls through to MO(1) on layer 0
++            osm!(ModifierCombination::new_from(false, false, false, true, false)), // OSM LShift
++            osm!(ModifierCombination::new_from(false, false, false, false, true)), // OSM LCtrl
++        ]],
++    ];
++
++    fn create_mo_osm_keyboard() -> Keyboard<'static> {
++        let behavior_config: &'static mut BehaviorConfig = Box::leak(Box::new(BehaviorConfig {
++            one_shot_modifiers: OneShotModifiersConfig {
++                activate_on_keypress: true,
++                cancel_ossm_on_layer_enter: true,
++                ..OneShotModifiersConfig::default()
++            },
++            ..BehaviorConfig::default()
++        }));
++        let per_key_config: &'static PositionalConfig<1, 3> = Box::leak(Box::new(PositionalConfig::default()));
++        Keyboard::new(wrap_keymap(MO_OSM_KEYMAP, per_key_config, behavior_config))
++    }
++
++    /// Hold MO(1), tap OSM(LShift), release MO(1), then tap A.
++    ///
++    /// The one-shot modifier is still active (it was set up after MO(1) was
++    /// *pressed*, so entering MO(1) did not cancel it), so A is sent with LShift
++    /// still applied.
++    #[test]
++    fn test_osm_release_key_mo_hold_then_tap_a() {
++        key_sequence_test! {
++            keyboard: create_mo_osm_keyboard(),
++            sequence: [
++                [0, 0, true, 10],   // Hold MO(1)
++                [0, 1, true, 10],   // Press OSM(LShift)
++                [0, 1, false, 10],  // Release OSM(LShift)
++                [0, 0, false, 10],  // Release MO(1)
++                [0, 1, true, 10],   // Press A (layer 0)
++                [0, 1, false, 10],  // Release A
++            ],
++            expected_reports: [
++                [KC_LSHIFT, [0, 0, 0, 0, 0, 0]], // LShift from OSM press
++                [KC_LSHIFT, [kc_to_u8!(A), 0, 0, 0, 0, 0]], // A with LShift
++                [0, [0, 0, 0, 0, 0, 0]], // All released
++            ]
++        };
++    }
++
++    /// Hold MO(1), hold OSM(LShift), release MO(1), release OSM(LShift), then tap A.
++    ///
++    /// MO(1) was entered before the OSM became active, so entering it does not
++    /// cancel the modifier. The modifier stays active and applies to A.
++    #[test]
++    fn test_osm_release_key_mo_release_before_osm() {
++        key_sequence_test! {
++            keyboard: create_mo_osm_keyboard(),
++            sequence: [
++                [0, 0, true, 10],   // Hold MO(1)
++                [0, 1, true, 10],   // Hold OSM(LShift)
++                [0, 0, false, 10],  // Release MO(1)
++                [0, 1, false, 10],  // Release OSM(LShift)
++                [0, 1, true, 10],   // Press A (layer 0)
++                [0, 1, false, 10],  // Release A
++            ],
++            expected_reports: [
++                [KC_LSHIFT, [0, 0, 0, 0, 0, 0]], // LShift pressed
++                [KC_LSHIFT, [kc_to_u8!(A), 0, 0, 0, 0, 0]], // LShift + A
++                [0, [0, 0, 0, 0, 0, 0]], // All released
++            ]
++        };
++    }
++
++    /// Hold MO(1), tap OSM(LShift), release MO(1), press MO(1) again (which enters
++    /// a layer while the OSM is still active and cancels the modifier),
++    /// release MO(1), then tap A.
++    ///
++    /// Expected:
++    /// - LShift is sent from the OSM press
++    /// - A is sent without LShift (modifier was cancelled by re-entering MO(1))
++    /// - All released
++    #[test]
++    fn test_osm_release_key_mo_press_again_releases() {
++        key_sequence_test! {
++            keyboard: create_mo_osm_keyboard(),
++            sequence: [
++                [0, 0, true, 10],   // Hold MO(1)
++                [0, 1, true, 10],   // Press OSM(LShift)
++                [0, 1, false, 10],  // Release OSM(LShift)
++                [0, 0, false, 10],  // Release MO(1)
++                [0, 0, true, 10],   // Press MO(1) again -> cancels active LShift
++                [0, 0, false, 10],  // Release MO(1)
++                [0, 1, true, 10],   // Press A (layer 0)
++                [0, 1, false, 10],  // Release A
++            ],
++            expected_reports: [
++                [KC_LSHIFT, [0, 0, 0, 0, 0, 0]], // LShift from OSM press
++                [0, [0, 0, 0, 0, 0, 0]], // All released
++                [0, [kc_to_u8!(A), 0, 0, 0, 0, 0]], // A without LShift (cancelled)
++                [0, [0, 0, 0, 0, 0, 0]], // All released
++            ]
++        };
++    }
+ }

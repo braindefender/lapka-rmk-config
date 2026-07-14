@@ -37,9 +37,9 @@ col_offset = 0
 matrix_type = "direct_pin"
 direct_pins = [
     #  Q        W        E        R        T
-    [ "P0_06", "P0_10", "P1_13", "P0_02", "P0_31" ],
+    [ "P0_06", "P0_10", "P1_11", "P0_15", "P0_31" ],
     #  A        S        D        F        G
-    [ "P0_17", "P0_09", "P1_11", "P1_15", "P0_29" ],
+    [ "P0_17", "P0_09", "P1_13", "P1_02", "P0_29" ],
     #  Z        X        C        V        B
     [ "P0_08", "P0_20", "P1_06", "P0_22", "P1_00" ],
     #                    Caps     Space    NAV
@@ -57,9 +57,9 @@ col_offset = 5
 matrix_type = "direct_pin"
 direct_pins = [
     #  Y        U        I        O        P
-    [ "P0_17", "P0_22", "P1_00", "P1_04", "P0_06" ],
+    [ "P0_17", "P0_24", "P0_11", "P1_04", "P0_06" ],
     #  H        J        K        L        ~
-    [ "P0_20", "P0_24", "P0_11", "P1_06", "P0_31" ],
+    [ "P0_20", "P0_22", "P1_00", "P1_06", "P0_31" ],
     #  N        M        &        [        ]
     [ "P1_13", "P0_02", "P0_09", "P0_29", "P0_08" ],
     #  SYM      Shift    AltGr
@@ -76,8 +76,7 @@ timeout = "300s"
 
 [behavior.one_shot_modifiers]
 activate_on_keypress = true
-# send_on_second_press = true
-release_modifiers_keys = [ "MO(3)", "MO(4)" ]
+cancel_ossm_on_layer_enter = true
 
 [layout]
 rows = 4
@@ -119,6 +118,9 @@ OSM_A     = "OSM(LAlt)"
 OSM_C     = "OSM(LCtrl)"
 OSM_S     = "OSM(LShift)"
 # Window Management mapping
+LT_Alt    = "LatchTap(LAlt, Tab)"
+LT_Gui    = "LatchTap(LGui, Tab)"
+LT_Ctrl   = "LatchTap(LCtrl, Tab)"
 PrevSpace = "WM(Left,  LCtrl | LGui)"
 NextSpace = "WM(Right, LCtrl | LGui)"
 # Bluetooth profiles mapping
@@ -161,7 +163,7 @@ G          J          I          M          T          NumLock    No         No 
 [[layer]] # 3
 name = "nav_layer"
 keys = """
-__         __         __         __         Escape     Escape     Home       End        Backspace  Delete
+@LT_Ctrl   @LT_Alt    @LT_Gui    __         Escape     Escape     Home       End        Backspace  Delete
 @OSM_G     @OSM_A     @OSM_C     @OSM_S     Enter      Enter      Left       Down       Up         Right
 @PrevSpace @NextSpace TG(1)      pscr       Tab        Tab        PageUp     PageDown   Quote      NumLock
                       ___        ___        ___        ___        ___        ___
